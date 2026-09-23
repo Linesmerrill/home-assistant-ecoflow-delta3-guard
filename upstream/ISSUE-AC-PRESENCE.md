@@ -8,8 +8,8 @@ Wrong value (sensor exists but is incorrect)
 
 ## Device
 
-EcoFlow DELTA 3 Ultra, serial prefix `D751`. Firmware version still needs to be
-recorded before submission.
+EcoFlow DELTA 3 Ultra, serial prefix `D751`, firmware `7.80.99.24` (released
+2026-09-18 according to the EcoFlow app update history).
 
 ## Sensor
 
