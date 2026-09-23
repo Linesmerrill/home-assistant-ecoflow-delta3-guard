@@ -10,7 +10,7 @@ blueprint:
     This is a recovery layer, not a substitute for finding and removing the
     schedule or setting that turned AC output off.
   domain: automation
-  author: Merrill Lines
+  author: Linesmerrill
   source_url: https://github.com/Linesmerrill/home-assistant-ecoflow-delta3-guard/blob/main/blueprints/automation/ecoflow_ac_output_guard.yaml
   homeassistant:
     min_version: 2024.10.0
