@@ -43,8 +43,8 @@ implements:
 - a fail-safe pause when Storm Guard telemetry is unknown or unavailable.
 
 It requires the proposed Storm Guard sensor from the upstream patch. Do not
-publish an import link until that prerequisite is merged or clearly documented
-for testers.
+enable the automation until that prerequisite is merged upstream or the patch
+under [`upstream/`](upstream/) is installed locally.
 
 ### AC output recovery guard
 
@@ -78,15 +78,18 @@ tested on one unit.
 See [`docs/TESTING.md`](docs/TESTING.md) for repeatable validation commands and
 the current test record.
 
-## Sharing path
+## Importing the blueprints
 
-Home Assistant can import automation blueprints directly from GitHub or a
-GitHub Gist. After the upstream dependency and event-clear path are verified:
+Home Assistant can import these files directly from GitHub in
+**Settings → Automations & scenes → Blueprints**:
 
-1. Publish this folder in a dedicated public repository.
-2. Add stable `source_url` values to each blueprint.
-3. Import each URL in **Settings → Automations & scenes → Blueprints**.
-4. Post the release and test matrix to the Home Assistant Blueprint Exchange.
+- [Reserve schedule with Storm Guard priority](https://github.com/Linesmerrill/home-assistant-ecoflow-delta3-guard/blob/main/blueprints/automation/ecoflow_delta3_reserve_storm_guard.yaml)
+- [AC output recovery guard](https://github.com/Linesmerrill/home-assistant-ecoflow-delta3-guard/blob/main/blueprints/automation/ecoflow_ac_output_guard.yaml)
+
+The current `ha-ef-ble` release does not yet expose the DELTA 3 Ultra fields
+used by these blueprints. Apply the matching focused patches under
+[`upstream/`](upstream/) or wait for equivalent upstream support before enabling
+the automations.
 
 ## License
 

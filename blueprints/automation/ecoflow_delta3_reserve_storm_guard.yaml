@@ -12,6 +12,7 @@ blueprint:
     other important equipment.
   domain: automation
   author: Merrill Lines
+  source_url: https://github.com/Linesmerrill/home-assistant-ecoflow-delta3-guard/blob/main/blueprints/automation/ecoflow_delta3_reserve_storm_guard.yaml
   homeassistant:
     min_version: 2024.10.0
   input:
