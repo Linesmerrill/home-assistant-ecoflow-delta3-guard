@@ -1,5 +1,7 @@
 # Suggested issue: DELTA 3 Ultra AC Plugged In uses the wrong telemetry field
 
+Submitted as [`rabits/ha-ef-ble#517`](https://github.com/rabits/ha-ef-ble/issues/517).
+
 ## Kind
 
 Wrong value (sensor exists but is incorrect)

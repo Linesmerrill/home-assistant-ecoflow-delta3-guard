@@ -1,5 +1,7 @@
 # Suggested issue: expose DELTA 3 Ultra Storm Guard active state
 
+Submitted as [`rabits/ha-ef-ble#518`](https://github.com/rabits/ha-ef-ble/issues/518).
+
 ## Kind
 
 New sensor / control (value exists on the device but is not exposed)

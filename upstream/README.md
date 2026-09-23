@@ -14,9 +14,14 @@ Both add a focused DELTA 3 Ultra unit test. Each test passed under Python 3.14
 in the live Home Assistant container on 2026-09-23.
 
 The repository's contribution guide asks for a sensor-request issue and a
-diagnostics dump before sensor work. Use the issue drafts in this directory,
-attach redacted diagnostics captured while AC is connected or Storm Guard is
-active, and wait for maintainer direction before opening the matching PR.
+diagnostics dump before sensor work. The focused requests are now public:
+
+- [DELTA 3 Ultra AC Plugged In uses the wrong telemetry field (#517)](https://github.com/rabits/ha-ef-ble/issues/517)
+- [Expose DELTA 3 Ultra Storm Guard active state (#518)](https://github.com/rabits/ha-ef-ble/issues/518)
+
+Diagnostics are still pending. Capture them while AC is connected or Storm
+Guard is active, attach them to the matching issue, and wait for maintainer
+direction before opening the PR.
 
 Apply one patch to a clean checkout with:
 
