@@ -1,0 +1,54 @@
+diff --git a/custom_components/ef_ble/eflib/devices/delta3_ultra.py b/custom_components/ef_ble/eflib/devices/delta3_ultra.py
+index e53e1f1..767f8a6 100644
+--- a/custom_components/ef_ble/eflib/devices/delta3_ultra.py
++++ b/custom_components/ef_ble/eflib/devices/delta3_ultra.py
+@@ -1,5 +1,5 @@
+ from ..device_options import UNLOCK_AC_CHARGING_MINIMUM, option_field
+-from ..props import computed_field
++from ..props import computed_field, pb_field
+ from . import delta3
+ 
+ 
+@@ -8,6 +8,8 @@ class Device(delta3.Device):
+ 
+     SN_PREFIX = (b"D751",)
+ 
++    plugged_in_ac = pb_field(delta3.pb.plug_in_info_ac_in_flag)
++
+     ac_charging_speed_min = option_field(
+         UNLOCK_AC_CHARGING_MINIMUM, enabled=1, disabled=200
+     )
+diff --git a/tests/eflib/test_delta3_ultra.py b/tests/eflib/test_delta3_ultra.py
+new file mode 100644
+index 0000000..726eaa4
+--- /dev/null
++++ b/tests/eflib/test_delta3_ultra.py
+@@ -0,0 +1,28 @@
++from unittest.mock import AsyncMock, MagicMock, Mock
++
++import pytest
++
++from custom_components.ef_ble.eflib.devices.delta3_ultra import Device
++from custom_components.ef_ble.eflib.pb import pd335_sys_pb2
++
++
++@pytest.fixture
++def device():
++    ble_dev = Mock()
++    ble_dev.address = "AA:BB:CC:DD:EE:FF"
++    adv_data = MagicMock()
++    device = Device(ble_dev, adv_data, "D751TEST1234")
++    device._conn = AsyncMock()
++    return device
++
++
++def test_delta3_ultra_uses_ac_input_flag_for_mains_presence(device):
++    message = pd335_sys_pb2.DisplayPropertyUpload(
++        plug_in_info_ac_in_flag=1,
++        plug_in_info_ac_charger_flag=False,
++    )
++
++    device.update_from_message(message, reset=True)
++
++    assert device.plugged_in_ac == 1
++    assert Device.plugged_in_ac.public_name in device.updated_fields

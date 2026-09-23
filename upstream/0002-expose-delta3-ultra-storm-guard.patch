@@ -1,0 +1,77 @@
+diff --git a/custom_components/ef_ble/binary_sensor.py b/custom_components/ef_ble/binary_sensor.py
+index 9563caa..6615e2d 100644
+--- a/custom_components/ef_ble/binary_sensor.py
++++ b/custom_components/ef_ble/binary_sensor.py
+@@ -164,6 +164,13 @@ _BINARY_SENSORS: Final[dict[str, BinarySensorEntityDescription]] = {
+     # SHP2 generic binary sensors
+     "grid_status": connectivity(enabled=True),
+     "storm_mode": safety(enabled=True),
++    "storm_guard_active": EcoflowBinarySensorEntityDescription(
++        key="storm_guard_active",
++        name="Storm Guard Active",
++        device_class=BinarySensorDeviceClass.SAFETY,
++        entity_registry_enabled_default=True,
++        state_attribute_fields=["storm_guard_enabled", "storm_guard_end_time"],
++    ),
+     # SHP3
+     "grid_is_energized": connectivity(enabled=True),
+     "ch{n}_signal_line": connectivity(
+diff --git a/custom_components/ef_ble/eflib/devices/delta3_ultra.py b/custom_components/ef_ble/eflib/devices/delta3_ultra.py
+index e53e1f1..1b645b8 100644
+--- a/custom_components/ef_ble/eflib/devices/delta3_ultra.py
++++ b/custom_components/ef_ble/eflib/devices/delta3_ultra.py
+@@ -1,5 +1,5 @@
+ from ..device_options import UNLOCK_AC_CHARGING_MINIMUM, option_field
+-from ..props import computed_field
++from ..props import computed_field, pb_field
+ from . import delta3
+ 
+ 
+@@ -8,6 +8,10 @@ class Device(delta3.Device):
+ 
+     SN_PREFIX = (b"D751",)
+ 
++    storm_guard_enabled = pb_field(delta3.pb.storm_pattern_enable)
++    storm_guard_active = pb_field(delta3.pb.storm_pattern_open_flag)
++    storm_guard_end_time = pb_field(delta3.pb.storm_pattern_end_time)
++
+     ac_charging_speed_min = option_field(
+         UNLOCK_AC_CHARGING_MINIMUM, enabled=1, disabled=200
+     )
+diff --git a/tests/eflib/test_delta3_ultra.py b/tests/eflib/test_delta3_ultra.py
+new file mode 100644
+index 0000000..9e198b0
+--- /dev/null
++++ b/tests/eflib/test_delta3_ultra.py
+@@ -0,0 +1,31 @@
++from unittest.mock import AsyncMock, MagicMock, Mock
++
++import pytest
++
++from custom_components.ef_ble.eflib.devices.delta3_ultra import Device
++from custom_components.ef_ble.eflib.pb import pd335_sys_pb2
++
++
++@pytest.fixture
++def device():
++    ble_dev = Mock()
++    ble_dev.address = "AA:BB:CC:DD:EE:FF"
++    adv_data = MagicMock()
++    device = Device(ble_dev, adv_data, "D751TEST1234")
++    device._conn = AsyncMock()
++    return device
++
++
++def test_delta3_ultra_exposes_storm_guard_telemetry(device):
++    message = pd335_sys_pb2.DisplayPropertyUpload(
++        storm_pattern_enable=True,
++        storm_pattern_open_flag=True,
++        storm_pattern_end_time=1790211640,
++    )
++
++    device.update_from_message(message, reset=True)
++
++    assert device.storm_guard_enabled is True
++    assert device.storm_guard_active is True
++    assert device.storm_guard_end_time == 1790211640
++    assert Device.storm_guard_active.public_name in device.updated_fields

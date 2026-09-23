@@ -1,0 +1,323 @@
+blueprint:
+  name: EcoFlow DELTA 3 reserve schedule with Storm Guard priority
+  description: >-
+    Controls an EcoFlow DELTA 3 family backup reserve through the EcoFlow BLE
+    integration. It charges to the configured maximum outside the weekday peak
+    window, permits discharge to an elective reserve during the peak window,
+    requests grid hold afterward, and gives an active Storm Guard event
+    priority over the rate schedule. AC output is never intentionally disabled.
+
+    Requires Storm Guard telemetry support from EcoFlow BLE. Test all power
+    transitions with a non-critical load before using this with computers or
+    other important equipment.
+  domain: automation
+  author: Merrill Lines
+  homeassistant:
+    min_version: 2024.10.0
+  input:
+    battery_level:
+      name: Battery level
+      selector:
+        entity:
+          filter:
+            domain: sensor
+    ac_plugged_in:
+      name: AC plugged in
+      selector:
+        entity:
+          filter:
+            domain: binary_sensor
+    ac_ports:
+      name: AC ports
+      selector:
+        entity:
+          filter:
+            domain: switch
+    backup_reserve_enabled:
+      name: Backup Reserve enabled
+      selector:
+        entity:
+          filter:
+            domain: switch
+    backup_reserve_level:
+      name: Backup Reserve level
+      selector:
+        entity:
+          filter:
+            domain: number
+    minimum_discharge_limit:
+      name: Minimum discharge limit
+      selector:
+        entity:
+          filter:
+            domain: number
+    maximum_charge_limit:
+      name: Maximum charge limit
+      selector:
+        entity:
+          filter:
+            domain: number
+    storm_guard_active:
+      name: Storm Guard active
+      selector:
+        entity:
+          filter:
+            domain: binary_sensor
+    peak_start:
+      name: Weekday peak start
+      default: "14:00:00"
+      selector:
+        time: {}
+    peak_end:
+      name: Weekday peak end
+      default: "20:00:00"
+      selector:
+        time: {}
+    off_peak_charge_start:
+      name: Off-peak charge start
+      default: "23:00:00"
+      selector:
+        time: {}
+    elective_reserve:
+      name: Elective-use reserve
+      description: Battery percentage preserved during ordinary grid operation.
+      default: 35
+      selector:
+        number:
+          min: 10
+          max: 90
+          step: 1
+          unit_of_measurement: "%"
+          mode: slider
+    permanent_floor:
+      name: Permanent outage floor
+      description: Minimum discharge limit restored after Storm Guard clears.
+      default: 1
+      selector:
+        number:
+          min: 0
+          max: 20
+          step: 1
+          unit_of_measurement: "%"
+          mode: slider
+    hold_margin:
+      name: Evening hold margin
+      description: >-
+        Points above current battery charge requested at peak end to enter grid
+        hold without writing the reserve equal to battery charge.
+      default: 5
+      selector:
+        number:
+          min: 2
+          max: 15
+          step: 1
+          unit_of_measurement: percentage points
+          mode: slider
+
+mode: restart
+max_exceeded: silent
+
+triggers:
+  - trigger: state
+    entity_id: !input storm_guard_active
+    to: "on"
+    id: storm_activated
+  - trigger: state
+    entity_id: !input storm_guard_active
+    to: "off"
+    id: storm_cleared
+  - trigger: time
+    at: !input peak_start
+    id: peak_start
+  - trigger: time
+    at: !input peak_end
+    id: peak_end
+  - trigger: time
+    at: !input off_peak_charge_start
+    id: off_peak_start
+  - trigger: time_pattern
+    minutes: "/5"
+    id: storm_reconciliation
+  - trigger: homeassistant
+    event: start
+    id: startup
+
+variables:
+  battery_level_entity: !input battery_level
+  reserve_entity: !input backup_reserve_level
+  floor_entity: !input minimum_discharge_limit
+  maximum_entity: !input maximum_charge_limit
+  peak_start_time: !input peak_start
+  peak_end_time: !input peak_end
+  off_peak_start_time: !input off_peak_charge_start
+  elective_reserve_value: !input elective_reserve
+  permanent_floor_value: !input permanent_floor
+  hold_margin_value: !input hold_margin
+
+actions:
+  - if:
+      - condition: trigger
+        id: startup
+    then:
+      - delay: "00:00:45"
+  - condition: state
+    entity_id: !input ac_ports
+    state: "on"
+  - condition: state
+    entity_id: !input backup_reserve_enabled
+    state: "on"
+  - condition: template
+    value_template: >-
+      {{ states(battery_level_entity) not in ['unknown', 'unavailable', 'none']
+         and states(reserve_entity) not in ['unknown', 'unavailable', 'none']
+         and states(floor_entity) not in ['unknown', 'unavailable', 'none']
+         and states(maximum_entity) not in ['unknown', 'unavailable', 'none'] }}
+  - variables:
+      current_soc: "{{ states(battery_level_entity) | float(-1) }}"
+      current_reserve: "{{ states(reserve_entity) | float(-1) }}"
+      current_floor: "{{ states(floor_entity) | float(-1) }}"
+      maximum_charge: "{{ states(maximum_entity) | float(100) }}"
+      evening_target: >-
+        {{ [(states(battery_level_entity) | float(-1) | round(0, 'ceil') | int)
+            + (hold_margin_value | int),
+            states(maximum_entity) | float(100) | round(0) | int] | min }}
+      is_peak_window: >-
+        {{ now().weekday() < 5
+           and (peak_start_time | string) <= now().strftime('%H:%M:%S')
+           < (peak_end_time | string) }}
+      is_evening_window: >-
+        {{ (peak_end_time | string) <= now().strftime('%H:%M:%S')
+           < (off_peak_start_time | string) }}
+  - choose:
+      - alias: Storm Guard always wins
+        conditions:
+          - condition: state
+            entity_id: !input storm_guard_active
+            state: "on"
+          - condition: state
+            entity_id: !input ac_plugged_in
+            state: "on"
+          - condition: template
+            value_template: >-
+              {{ (current_reserve | float) < (maximum_charge | float) }}
+        sequence:
+          - action: number.set_value
+            target:
+              entity_id: !input backup_reserve_level
+            data:
+              value: "{{ maximum_charge | round(0) | int }}"
+      - alias: Restore the normal period after Storm Guard clears
+        conditions:
+          - condition: trigger
+            id: storm_cleared
+          - condition: state
+            entity_id: !input storm_guard_active
+            state: "off"
+          - condition: state
+            entity_id: !input ac_plugged_in
+            state: "on"
+        sequence:
+          - if:
+              - condition: template
+                value_template: >-
+                  {{ (current_floor | float) != (permanent_floor_value | float) }}
+            then:
+              - action: number.set_value
+                target:
+                  entity_id: !input minimum_discharge_limit
+                data:
+                  value: "{{ permanent_floor_value | int }}"
+              - delay: "00:00:01"
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: >-
+                      {{ is_peak_window
+                         and (current_soc | float)
+                           > (elective_reserve_value | float)
+                             + (hold_margin_value | float)
+                         and (current_reserve | float)
+                           != (elective_reserve_value | float) }}
+                sequence:
+                  - action: number.set_value
+                    target:
+                      entity_id: !input backup_reserve_level
+                    data:
+                      value: "{{ elective_reserve_value | int }}"
+              - conditions:
+                  - condition: template
+                    value_template: >-
+                      {{ is_evening_window
+                         and (current_soc | float) < (maximum_charge | float)
+                         and (current_reserve | float) != (evening_target | float) }}
+                sequence:
+                  - action: number.set_value
+                    target:
+                      entity_id: !input backup_reserve_level
+                    data:
+                      value: "{{ evening_target | int }}"
+            default:
+              - if:
+                  - condition: template
+                    value_template: >-
+                      {{ not is_peak_window and not is_evening_window
+                         and (current_reserve | float) < (maximum_charge | float) }}
+                then:
+                  - action: number.set_value
+                    target:
+                      entity_id: !input backup_reserve_level
+                    data:
+                      value: "{{ maximum_charge | round(0) | int }}"
+      - alias: Apply the normal schedule only while Storm Guard is off
+        conditions:
+          - condition: state
+            entity_id: !input storm_guard_active
+            state: "off"
+          - condition: state
+            entity_id: !input ac_plugged_in
+            state: "on"
+          - condition: template
+            value_template: >-
+              {{ trigger.id in ['peak_start', 'peak_end', 'off_peak_start',
+                                 'startup'] }}
+        sequence:
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: >-
+                      {{ is_peak_window
+                         and (current_soc | float)
+                           > (elective_reserve_value | float)
+                             + (hold_margin_value | float)
+                         and (current_reserve | float)
+                           != (elective_reserve_value | float) }}
+                sequence:
+                  - action: number.set_value
+                    target:
+                      entity_id: !input backup_reserve_level
+                    data:
+                      value: "{{ elective_reserve_value | int }}"
+              - conditions:
+                  - condition: template
+                    value_template: >-
+                      {{ is_evening_window
+                         and (current_soc | float) < (maximum_charge | float)
+                         and (current_reserve | float) != (evening_target | float) }}
+                sequence:
+                  - action: number.set_value
+                    target:
+                      entity_id: !input backup_reserve_level
+                    data:
+                      value: "{{ evening_target | int }}"
+            default:
+              - if:
+                  - condition: template
+                    value_template: >-
+                      {{ not is_peak_window and not is_evening_window
+                         and (current_reserve | float) < (maximum_charge | float) }}
+                then:
+                  - action: number.set_value
+                    target:
+                      entity_id: !input backup_reserve_level
+                    data:
+                      value: "{{ maximum_charge | round(0) | int }}"

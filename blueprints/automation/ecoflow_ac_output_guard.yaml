@@ -1,0 +1,124 @@
+blueprint:
+  name: EcoFlow AC output recovery guard
+  description: >-
+    Detects an unexpected EcoFlow AC-output shutdown, attempts one immediate
+    recovery when grid is present or the battery is safely above its minimum,
+    and creates a persistent Home Assistant notification showing whether the
+    recovery succeeded. Optional notification actions can send the same event
+    through a mobile app or another notifier.
+
+    This is a recovery layer, not a substitute for finding and removing the
+    schedule or setting that turned AC output off.
+  domain: automation
+  author: Merrill Lines
+  homeassistant:
+    min_version: 2024.10.0
+  input:
+    ac_ports:
+      name: AC ports
+      selector:
+        entity:
+          filter:
+            domain: switch
+    ac_plugged_in:
+      name: AC plugged in
+      selector:
+        entity:
+          filter:
+            domain: binary_sensor
+    battery_level:
+      name: Battery level
+      selector:
+        entity:
+          filter:
+            domain: sensor
+    minimum_discharge_limit:
+      name: Minimum discharge limit
+      selector:
+        entity:
+          filter:
+            domain: number
+    recovery_margin:
+      name: Battery recovery margin
+      description: >-
+        Recovery is allowed without grid only when battery charge exceeds the
+        configured minimum by this many percentage points.
+      default: 5
+      selector:
+        number:
+          min: 2
+          max: 20
+          step: 1
+          unit_of_measurement: percentage points
+          mode: slider
+    notification_id:
+      name: Persistent notification ID
+      default: ecoflow_ac_output_off
+      selector:
+        text: {}
+    additional_notification_actions:
+      name: Additional notification actions
+      description: Optional actions for mobile push, text-to-speech, or another notifier.
+      default: []
+      selector:
+        action: {}
+
+mode: single
+max_exceeded: silent
+
+triggers:
+  - trigger: state
+    entity_id: !input ac_ports
+    to: "off"
+    id: output_off
+  - trigger: homeassistant
+    event: start
+    id: startup
+
+variables:
+  ac_ports_entity: !input ac_ports
+  grid_entity: !input ac_plugged_in
+  battery_entity: !input battery_level
+  floor_entity: !input minimum_discharge_limit
+  recovery_margin_value: !input recovery_margin
+  persistent_notification_id: !input notification_id
+
+actions:
+  - if:
+      - condition: trigger
+        id: startup
+    then:
+      - delay: "00:00:45"
+  - condition: state
+    entity_id: !input ac_ports
+    state: "off"
+  - if:
+      - condition: template
+        value_template: >-
+          {{ is_state(grid_entity, 'on')
+             or (states(battery_entity) | float(-1))
+                > ((states(floor_entity) | float(1))
+                   + (recovery_margin_value | float)) }}
+    then:
+      - action: switch.turn_on
+        target:
+          entity_id: !input ac_ports
+        continue_on_error: true
+      - delay: "00:00:01"
+  - action: persistent_notification.create
+    data:
+      notification_id: "{{ persistent_notification_id }}"
+      title: >-
+        {% if is_state(ac_ports_entity, 'on') %}
+          EcoFlow AC output briefly turned off — restored
+        {% else %}
+          EcoFlow AC output is OFF
+        {% endif %}
+      message: >-
+        AC output unexpectedly turned off. The recovery guard
+        {% if is_state(ac_ports_entity, 'on') %}restored it{% else %}could not restore it{% endif %}.
+        Current output state: {{ states(ac_ports_entity) }}.
+        Grid input: {{ states(grid_entity) }}.
+        Battery: {{ states(battery_entity) }}%.
+  - choose: []
+    default: !input additional_notification_actions
